@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload de Audiobook</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        form {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #158caa;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #106c85;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload de Audiobook</h1>
+    <form id="uploadForm">
+        <div class="form-group">
+            <label for="title">Título do Livro:</label>
+            <input type="text" id="title" required>
+        </div>
+        <div class="form-group">
+            <label for="author">Autor:</label>
+            <input type="text" id="author" required>
+        </div>
+        <div class="form-group">
+            <label for="cover">Imagem de Capa:</label>
+            <input type="file" id="cover" name="cover" accept="image/*" required>
+            <div id="coverPreview" style="margin-top: 10px; max-width: 200px;"></div>
+        </div>
+        <div class="form-group">
+            <label for="summary">Descrição:</label>
+            <textarea id="summary" rows="4"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Arquivos de Áudio (Capítulos):</label>
+            <div id="chapters"></div>
+            <button type="button" onclick="addChapter()" style="margin-top: 10px; background: #4CAF50;">+ Adicionar Capítulo</button>
+        </div>
+        <button type="submit">Enviar Livro</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        // Preview da imagem de capa
+        document.getElementById('cover').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('coverPreview');
+                    preview.innerHTML = `<img src="${e.target.result}" style="max-width: 100%; height: auto;">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Adicionar campo de capítulo (até 30 capítulos)
+        function addChapter() {
+            const chaptersDiv = document.getElementById('chapters');
+            const currentCount = chaptersDiv.querySelectorAll('.chapter').length;
+            if (currentCount >= 30) {
+                alert('Máximo de 30 capítulos atingido');
+                return;
+            }
+
+            const chapterDiv = document.createElement('div');
+            chapterDiv.className = 'chapter';
+            chapterDiv.style.border = '1px solid #ddd';
+            chapterDiv.style.padding = '10px';
+            chapterDiv.style.marginBottom = '10px';
+            chapterDiv.style.borderRadius = '4px';
+
+            const chapterNumber = currentCount + 1;
+            chapterDiv.innerHTML = `
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <strong style="margin-right: 10px;">Capítulo ${chapterNumber}</strong>
+                    <button type="button" onclick="this.closest('.chapter').remove()" 
+                            style="margin-left: auto; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px;">
+                        Remover
+                    </button>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label>Título do Capítulo:</label>
+                    <input type="text" name="chapterTitle[]" class="chapter-title" style="width: 100%; padding: 8px; margin-top: 5px;">
+                </div>
+                <div>
+                    <label>Arquivo de Áudio:</label>
+                    <input type="file" name="chapterAudio[]" class="chapter-audio" accept="audio/*" required style="width: 100%; margin-top: 5px;">
+                </div>
+            `;
+            chaptersDiv.appendChild(chapterDiv);
+        }
+
+        // Iniciar com um capítulo
+        addChapter();
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const resultDiv = document.getElementById('result');
+            const formData = new FormData();
+
+            // Adiciona metadados do livro
+            const metadata = {
+                title: document.getElementById('title').value,
+                author: document.getElementById('author').value,
+                summary: document.getElementById('summary').value
+            };
+            formData.append('metadata', JSON.stringify(metadata));
+            
+            // Adiciona capa
+            formData.append('cover', document.getElementById('cover').files[0]);
+
+            // Adiciona capítulos
+            const chapters = document.querySelectorAll('.chapter');
+            chapters.forEach((chapter, index) => {
+                const audioFile = chapter.querySelector('.chapter-audio').files[0];
+                const title = chapter.querySelector('.chapter-title').value;
+                
+                formData.append(`chapters[${index}][audio]`, audioFile);
+                formData.append(`chapters[${index}][title]`, title);
+                formData.append(`chapters[${index}][order]`, index + 1);
+            });
+            try {
+                const response = await fetch('/api/books/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                // Tenta ler JSON, mas aceita respostas não-JSON para mostrar erro
+                let data;
+                const contentType = response.headers.get('content-type') || '';
+                try {
+                    if (contentType.includes('application/json')) {
+                        data = await response.json();
+                    } else {
+                        const text = await response.text();
+                        data = { message: text };
+                    }
+                } catch (err) {
+                    // fallback para texto cru
+                    const text = await response.text().catch(() => '');
+                    data = { message: text || err.message };
+                }
+
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    // mostrar id quando disponível
+                    const id = data && (data._id || data.insertedId || data.fileId || (data.uploaded && data.uploaded[0] && data.uploaded[0].fileId));
+                    resultDiv.textContent = 'Upload realizado com sucesso!' + (id ? ' ID: ' + id : '');
+                    e.target.reset();
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.textContent = 'Erro no upload: ' + (data.error || data.message || JSON.stringify(data));
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.textContent = 'Erro: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
+
