@@ -34,7 +34,12 @@ router.post('/upload', upload.any(), async (req, res) => {
 
         // Processa cada capítulo enviado (áudio)
         const playlist = [];
-        const metadata = JSON.parse(req.body.metadata || '{}');
+         let metadata = {};// metadados do livro (título, autor, etc.)
+        try {// tenta parsear metadados JSON
+            metadata = JSON.parse(req.body.metadata || '{}');
+        } catch (e) {
+            return res.status(400).json({ error: 'Metadados inválidos. Envie um JSON válido no campo "metadata".' });
+        }
         
         // Processa arquivos de áudio cujo fieldname corresponda a chapters[<index>][audio]
         // aceita índices dinâmicos até 30 capítulos
